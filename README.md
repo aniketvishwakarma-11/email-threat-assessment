@@ -29,7 +29,7 @@ Development defaults are provided for local use. Set these environment variables
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `DJANGO_SECRET_KEY` | Development placeholder | Django signing secret |
+| `DJANGO_SECRET_KEY` | Generated in development; required in production | Django signing secret |
 | `DJANGO_DEBUG` | `false` | Enable Django debug mode |
 | `DJANGO_ENV` | `development` | Use `production` to require hardened settings |
 | `DJANGO_ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated host names |
