@@ -52,6 +52,18 @@ POSSIBLE_DATASET_PATHS = [
     BASE_DIR / "detector" / "emails.xlsx",
 ]
 
+EMAIL_PREVIEW_LIMIT = 20_000
+PDF_PREVIEW_LIMIT = 2_000
+
+SOURCE_LABELS = {
+    "combined": "Local rules + ML model",
+    "rules": "Local rules only",
+    "local_rules": "Local rules only",
+    "gemini": "Gemini review",
+    "pdf_extraction": "PDF extraction",
+    "input_validation": "Input validation",
+}
+
 MALICIOUS_INDICATORS = (
     ("payload_execution", "payload.exe", 40, "Payload execution reference"),
     ("command_execution", "cmd /c", 40, "Command shell execution instruction"),
@@ -258,6 +270,37 @@ def _build_report(source, verdict, score, reasons, confidence, analysis_source, 
     if verdict == "malicious":
         score = max(score, 80)
     score = max(0, min(100, int(score)))
+
+    breakdown = []
+    raw_score = 0
+    for reason in reasons:
+        points = int(reason.get("weight", 0) or 0)
+        if points <= 0:
+            continue
+        breakdown.append({
+            "label": reason["label"],
+            "points": points,
+            "malicious": bool(reason.get("malicious")),
+        })
+        raw_score += points
+
+    if score > raw_score:
+        breakdown.append({
+            "label": "Malicious verdict minimum" if verdict == "malicious" else "Verdict minimum",
+            "points": score - raw_score,
+            "malicious": verdict == "malicious",
+        })
+
+    display_total = max(raw_score, score, 1)
+    for item in breakdown:
+        item["percent"] = round(item["points"] * 100 / display_total)
+
+    score_note = None
+    if raw_score > 100:
+        score_note = "Indicator contributions exceed 100; the displayed score is capped."
+    elif score > raw_score:
+        score_note = f"The score includes a {score - raw_score}-point minimum for a {verdict} verdict."
+
     return {
         "source": source,
         "verdict": verdict,
@@ -267,7 +310,11 @@ def _build_report(source, verdict, score, reasons, confidence, analysis_source, 
         "reasons": reasons,
         "recommendation": _recommendation(verdict),
         "analysis_source": analysis_source,
+        "analysis_source_label": SOURCE_LABELS.get(analysis_source, analysis_source),
         "fallback": fallback,
+        "score_breakdown": breakdown,
+        "score_note": score_note,
+        "raw_score": raw_score,
     }
 
 
@@ -276,13 +323,19 @@ def analyze_email(message):
     if not normalized:
         return _build_report(
             "email", "unknown", 0,
-            [{"code": "empty_input", "label": "No email text was provided", "evidence": ""}],
+            [{
+                "code": "empty_input",
+                "label": "No email text was provided",
+                "evidence": "",
+                "weight": 0,
+                "malicious": False,
+            }],
             "low", "input_validation", True,
         )
 
     matches = _matched_indicators(normalized)
     reasons = [
-        {key: match[key] for key in ("code", "label", "evidence")}
+        {key: match[key] for key in ("code", "label", "evidence", "weight", "malicious")}
         for match in matches
     ]
     score = sum(match["weight"] for match in matches)
@@ -293,12 +346,16 @@ def analyze_email(message):
             "code": "model_spam",
             "label": "The local email model identified spam-like language",
             "evidence": "local classifier",
+            "weight": 20,
+            "malicious": False,
         })
     elif model_prediction == "ham":
         reasons.append({
             "code": "model_ham",
             "label": "The local email model found no spam classification",
             "evidence": "local classifier",
+            "weight": 0,
+            "malicious": False,
         })
 
     has_malicious = any(match["malicious"] for match in matches)
@@ -314,16 +371,20 @@ def analyze_email(message):
             "code": "classifier_unavailable",
             "label": "No local classifier result was available",
             "evidence": "analysis unavailable",
+            "weight": 0,
+            "malicious": False,
         })
 
     confidence = "high" if has_malicious or (model_prediction and matches) else "medium"
     if verdict == "unknown":
         confidence = "low"
-    return _build_report(
+    report = _build_report(
         "email", verdict, score, reasons, confidence,
         "combined" if model_prediction else "rules",
         verdict == "unknown",
     )
+    report["model_prediction"] = model_prediction
+    return report
 
 
 def extract_pdf_text(file_obj):
@@ -395,13 +456,19 @@ def analyze_pdf_text(pdf_text):
     if not normalized:
         return _build_report(
             "pdf", "unknown", 0,
-            [{"code": "empty_pdf", "label": "No extractable PDF text was found", "evidence": ""}],
+            [{
+                "code": "empty_pdf",
+                "label": "No extractable PDF text was found",
+                "evidence": "",
+                "weight": 0,
+                "malicious": False,
+            }],
             "low", "pdf_extraction", True,
         )
 
     matches = _matched_indicators(normalized, include_links=False)
     reasons = [
-        {key: match[key] for key in ("code", "label", "evidence")}
+        {key: match[key] for key in ("code", "label", "evidence", "weight", "malicious")}
         for match in matches
     ]
     score = sum(match["weight"] for match in matches)
@@ -413,25 +480,31 @@ def analyze_pdf_text(pdf_text):
 
     model_verdict = _gemini_classification(normalized)
     if model_verdict:
+        ai_score = {"safe": 0, "suspicious": 55, "malicious": 90}[model_verdict]
         reasons.append({
             "code": "ai_review",
             "label": "Optional AI-assisted document review completed",
             "evidence": "Gemini classification",
+            "weight": ai_score,
+            "malicious": model_verdict == "malicious",
         })
         if model_verdict == "safe":
             reasons.append({
                 "code": "ai_safe_advisory",
                 "label": "AI review found no obvious threat, but a safe verdict cannot be proven automatically",
                 "evidence": "advisory result",
+                "weight": 0,
+                "malicious": False,
             })
             return _build_report("pdf", "unknown", 0, reasons, "low", "gemini", True)
-        ai_score = {"safe": 0, "suspicious": 55, "malicious": 90}[model_verdict]
         return _build_report("pdf", model_verdict, ai_score, reasons, "medium", "gemini")
 
     reasons.append({
         "code": "ai_review_unavailable",
         "label": "No local threat indicators were found, but the optional AI review was unavailable",
         "evidence": "analysis unavailable",
+        "weight": 0,
+        "malicious": False,
     })
     return _build_report("pdf", "unknown", 0, reasons, "low", "local_rules", True)
 
@@ -449,20 +522,143 @@ def _legacy_email_result(report):
     return "Unknown"
 
 
+def _legacy_email_label(report):
+    """Return the label the original model-only workflow would have shown."""
+    return "Spam" if report.get("model_prediction") == "spam" else "Ham"
+
+
+def _legacy_pdf_label(report):
+    """Approximate the original single-label PDF output, including fail-open defaults."""
+    codes = {reason["code"] for reason in report["reasons"]}
+    if report["verdict"] == "unknown":
+        return "Suspicious" if "empty_pdf" in codes else "Safe"
+    return report["verdict"].capitalize()
+
+
+def _pipeline_indicator_count(report, excluded_codes):
+    return sum(
+        1 for reason in report["reasons"]
+        if reason["code"] not in excluded_codes
+    )
+
+
+def _email_pipeline(report):
+    codes = {reason["code"] for reason in report["reasons"]}
+    indicator_count = _pipeline_indicator_count(
+        report, {"model_spam", "model_ham", "classifier_unavailable", "empty_input"}
+    )
+    model_used = bool(codes & {"model_spam", "model_ham"})
+    input_ok = "empty_input" not in codes
+    return [
+        {
+            "name": "Input validation",
+            "status": "complete" if input_ok else "warning",
+            "detail": "Text accepted" if input_ok else "No email text supplied",
+        },
+        {
+            "name": "Local rules",
+            "status": "complete",
+            "detail": f"{indicator_count} indicator(s) matched" if indicator_count else "No indicators matched",
+        },
+        {
+            "name": "ML classifier",
+            "status": "complete" if model_used else "skipped",
+            "detail": "Naive Bayes reviewed the text" if model_used else "Classifier unavailable",
+        },
+        {
+            "name": "Score & verdict",
+            "status": "complete",
+            "detail": f"{report['risk_score']}/100 / {report['severity']} severity",
+        },
+        {
+            "name": "Recommendation",
+            "status": "complete",
+            "detail": "Guidance generated",
+        },
+    ]
+
+
+def _pdf_pipeline(report, extracted):
+    codes = {reason["code"] for reason in report["reasons"]}
+    indicator_count = _pipeline_indicator_count(
+        report, {"ai_review", "ai_safe_advisory", "ai_review_unavailable", "empty_pdf"}
+    )
+    ai_used = report["analysis_source"] == "gemini"
+    if ai_used:
+        ai_status = "complete"
+        ai_detail = (
+            "Advisory only; a safe verdict was not proven"
+            if "ai_safe_advisory" in codes
+            else "Gemini review completed"
+        )
+    else:
+        ai_status = "skipped"
+        ai_detail = (
+            "Not needed; local rules were decisive"
+            if indicator_count
+            else "Disabled or unavailable"
+        )
+    return [
+        {
+            "name": "Upload validation",
+            "status": "complete",
+            "detail": "Signature, size, and page limits passed",
+        },
+        {
+            "name": "Text extraction",
+            "status": "complete" if extracted else "warning",
+            "detail": "Text extracted" if extracted else "No extractable text",
+        },
+        {
+            "name": "Local rules",
+            "status": "complete",
+            "detail": f"{indicator_count} indicator(s) matched" if indicator_count else "No indicators matched",
+        },
+        {
+            "name": "Optional AI review",
+            "status": ai_status,
+            "detail": ai_detail,
+        },
+        {
+            "name": "Score & verdict",
+            "status": "complete",
+            "detail": f"{report['risk_score']}/100 / {report['severity']} severity",
+        },
+        {
+            "name": "Recommendation",
+            "status": "complete",
+            "detail": "Guidance generated",
+        },
+    ]
+
+
 def Home(request):
     result = None
     pdf_result = None
     pdf_message = None
     email_report = None
     pdf_report = None
+    email_text = ""
+    email_text_truncated = False
+    email_legacy_label = None
+    email_pipeline = None
+    pdf_excerpt = ""
+    pdf_excerpt_truncated = False
+    pdf_legacy_label = None
+    pdf_pipeline = None
     form = MessageForm()
 
     if request.method == "POST":
         if "email_check" in request.POST:
             form = MessageForm(request.POST)
             if form.is_valid():
-                email_report = analyze_email(form.cleaned_data["text"])
+                submitted_text = form.cleaned_data["text"]
+                email_report = analyze_email(submitted_text)
                 result = _legacy_email_result(email_report)
+                email_legacy_label = _legacy_email_label(email_report)
+                email_text = submitted_text[:EMAIL_PREVIEW_LIMIT]
+                email_text_truncated = len(submitted_text) > EMAIL_PREVIEW_LIMIT
+                email_pipeline = _email_pipeline(email_report)
         elif "pdf_check" in request.POST:
             pdf_file = request.FILES.get("pdf_file")
             if pdf_file is None:
@@ -480,6 +676,10 @@ def Home(request):
                     pdf_text = extract_pdf_text(pdf_file)
                     pdf_report = analyze_pdf_text(pdf_text)
                     pdf_result = pdf_report["verdict"]
+                    pdf_legacy_label = _legacy_pdf_label(pdf_report)
+                    pdf_excerpt = pdf_text[:PDF_PREVIEW_LIMIT]
+                    pdf_excerpt_truncated = len(pdf_text) > PDF_PREVIEW_LIMIT
+                    pdf_pipeline = _pdf_pipeline(pdf_report, bool(pdf_text.strip()))
                     if pdf_report["verdict"] == "unknown":
                         pdf_message = "The PDF could not be confidently classified."
                     else:
@@ -492,4 +692,12 @@ def Home(request):
         "pdf_message": pdf_message,
         "email_report": email_report,
         "pdf_report": pdf_report,
+        "email_text": email_text,
+        "email_text_truncated": email_text_truncated,
+        "email_legacy_label": email_legacy_label,
+        "email_pipeline": email_pipeline,
+        "pdf_excerpt": pdf_excerpt,
+        "pdf_excerpt_truncated": pdf_excerpt_truncated,
+        "pdf_legacy_label": pdf_legacy_label,
+        "pdf_pipeline": pdf_pipeline,
     })

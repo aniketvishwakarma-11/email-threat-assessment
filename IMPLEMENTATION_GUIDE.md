@@ -277,6 +277,8 @@ This is the main implementation file. It now contains:
 - Categorized threat indicators.
 - Risk scoring.
 - Structured reports.
+- Report metadata for the UI, including reason weights, score breakdowns,
+  legacy-equivalent labels, and analysis pipeline stages.
 - Safe fallback states.
 - PDF upload and extraction protections.
 - Optional Gemini analysis.
@@ -291,18 +293,24 @@ unbounded form payload from reaching the classifier.
 
 Added the user interface for:
 
-- Email analysis.
+- Email analysis with demo sample buttons.
 - PDF analysis.
-- Report badges.
-- Risk score and severity.
-- Confidence.
-- Detection reasons.
-- Recommendations.
-- Analysis-source display.
+- A side-by-side legacy-versus-improved comparison.
+- Report badges, a risk gauge, a score breakdown, and confidence.
+- Detection reasons with point contributions.
+- Evidence highlighting generated from matched indicators.
+- An analysis pipeline with completed, skipped, and warning stages.
+- Recommendations and analysis-source display.
+- Explicit unknown and fallback states.
+
+### `templates/_report.html`
+
+Added a shared report partial so email and PDF results use the same comparison,
+gauge, breakdown, reason, evidence-preview, and pipeline layout.
 
 ### `tests.py`
 
-Added 10 Django tests for the main application behavior.
+Added 14 Django tests for the main application behavior and the demo UI.
 
 ### `requirements.txt`
 
@@ -316,7 +324,7 @@ credentials.
 
 ### `README.md`
 
-Added a shorter user and contributor setup guide.
+Added a setup guide and a short demo walkthrough for the explainable UI.
 
 ### `.gitignore`
 
@@ -833,51 +841,54 @@ temporary secret.
 ## 13. User-interface improvements
 
 The new `templates/home.html` keeps the original one-page interaction but adds
-an explainability layer.
+an explainability layer. `templates/_report.html` is a shared partial so email
+and PDF results use the same report layout.
 
-### Email panel
+### Demo sample buttons
 
-The email panel contains:
+The email panel includes buttons for phishing, phishing-with-link, malicious,
+and benign text. They prefill the text area so a reviewer can demonstrate each
+verdict quickly.
 
-- A text area.
-- CSRF protection.
-- Django form validation.
-- A submit button.
+### Legacy-versus-improved comparison
 
-After submission, the page displays an email threat report.
+Each report shows a compact two-column comparison:
 
-### PDF panel
+- The original prototype produced one label.
+- The improved report shows the verdict, reason count, score, and confidence.
 
-The PDF panel contains:
+The legacy label is derived from the same input to illustrate the output
+difference; the old code is not executed again.
 
-- A PDF file selector.
-- Browser-side PDF accept hints.
-- A multipart form.
-- Upload validation messages.
-- A submit button.
+### Email and PDF panels
+
+The forms keep CSRF protection, Django validation, upload accept hints, and
+upload validation messages. The PDF panel explains that a document with no
+local indicators returns `unknown`, not `safe`, while AI review is disabled.
 
 ### Report display
 
 The report UI displays:
 
-- Verdict badge.
-- Severity badge.
-- Score out of 100.
-- Confidence.
-- Recommendation.
-- Analysis source.
-- Fallback notice.
-- Detection reasons.
-- Bounded evidence values.
+- Verdict, severity, and confidence badges.
+- A conic-gradient risk gauge with the score out of 100.
+- A score breakdown with per-indicator points and color-coded contribution bars.
+- Detection reasons with evidence values and point contributions.
+- Highlighted evidence inside a bounded preview of the email or PDF text.
+- An analysis pipeline showing completed, skipped, and warning stages.
+- Recommendation and analysis-source labels.
+- An explicit unknown callout explaining why safety was not proven.
 
-The template relies on Django's normal HTML escaping for user-controlled
-content. It does not render raw email or PDF text as HTML.
+The preview is bounded to the first 20,000 email characters or 2,000 PDF
+characters. Highlighting runs in the browser over `json_script` data. The
+preview is built with document text nodes and `mark` elements instead of
+`innerHTML`, so submitted content is never interpreted as HTML.
 
 ---
 
 ## 14. Testing implementation
 
-The original project had no meaningful tests. The branch now includes 10
+The original project had no meaningful tests. The branch now includes 14
 Django tests in the root-level `tests.py`.
 
 ### Current test coverage
@@ -889,11 +900,16 @@ The suite covers:
 3. Empty email returns `unknown` instead of `Ham`.
 4. Benign PDF text without AI review is not falsely marked safe.
 5. Malicious indicators take priority over suspicious indicators.
-6. The home page renders successfully.
-7. Email submission returns a report.
-8. Invalid PDF content is rejected before extraction.
-9. Valid PDF upload returns a report through the request path.
-10. PDF upload size limits are enforced.
+6. Malicious score breakdowns reconcile to the final score.
+7. Capped malicious scores are explained in the breakdown.
+8. The home page renders successfully with demo samples.
+9. Email submission returns a report.
+10. Email reports include the legacy comparison, score breakdown, and preview data.
+11. Invalid PDF content is rejected before extraction.
+12. Valid PDF upload returns a report through the request path.
+13. A benign PDF compares the legacy `Safe` label with the improved `unknown`
+    result and shows the skipped AI stage.
+14. PDF upload size limits are enforced.
 
 ### Commands used for verification
 
@@ -908,7 +924,7 @@ The implemented branch passed:
 
 ```text
 System check identified no issues (0 silenced).
-Ran 10 tests
+Ran 14 tests
 OK
 ```
 
@@ -1088,6 +1104,8 @@ existing prototype. The project now:
 - Explains why a result was produced.
 - Quantifies risk with a bounded score.
 - Distinguishes safe, suspicious, malicious, and unknown states.
+- Includes a demo UI that compares the legacy label with the explainable report.
+- Highlights matched evidence and visualizes score contributions and pipeline stages.
 - Avoids treating unavailable analysis as safe.
 - Protects basic PDF upload boundaries.
 - Keeps Gemini optional.

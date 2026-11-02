@@ -2,12 +2,17 @@
 
 A small Django application for explainable email and PDF threat assessment.
 
+New to the project? Read [PROJECT_HANDBOOK.md](PROJECT_HANDBOOK.md) for the full A-Z background, the changes made by Aniket, the system's current behavior, and the impact of those changes.
+
 ## Features
 
 - Classifies pasted email text with a local scikit-learn model.
 - Extracts text from PDF uploads with `pypdf`.
 - Detects suspicious and malicious indicators with transparent local rules.
 - Produces a report with verdict, risk score, severity, confidence, evidence, and a recommendation.
+- Shows a side-by-side comparison of the legacy single-label output and the explainable assessment.
+- Highlights matched evidence, renders a risk gauge with a score breakdown, and shows the analysis pipeline.
+- Includes demo sample buttons for phishing, phishing-with-link, malicious, and benign email text.
 - Supports optional Gemini review for documents that have no local indicator match.
 - Uses an explicit `unknown` result when analysis is unavailable instead of silently returning `safe` or `Ham`.
 
@@ -22,6 +27,13 @@ python manage.py runserver
 ```
 
 The application is intentionally kept compatible with the existing root-level module layout. The home page is available at `http://127.0.0.1:8000/`.
+
+## Demo walkthrough
+
+1. Click a demo sample button to prefill the email form.
+2. Submit the email and compare the legacy label with the structured report.
+3. Review the highlighted evidence, score breakdown, and analysis pipeline.
+4. Upload a text-based PDF with no indicators to see the `unknown` fallback state while AI review is disabled.
 
 ## Configuration
 
