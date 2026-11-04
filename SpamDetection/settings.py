@@ -119,4 +119,4 @@ STATIC_URL = 'static/'
 
 import os
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY","AIzaSyD-ESUaTzo8otZuTorzaevkU7OL3BSJpCc")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")

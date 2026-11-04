@@ -1,0 +1,5 @@
+Django>=5.2,<6.1
+google-genai
+pandas
+PyPDF2
+scikit-learn
