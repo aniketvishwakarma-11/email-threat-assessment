@@ -12,6 +12,7 @@ class ScanRecord(models.Model):
         SAFE = "safe", "Safe"
         SUSPICIOUS = "suspicious", "Suspicious"
         MALICIOUS = "malicious", "Malicious"
+        UNKNOWN = "unknown", "Unknown"
 
     scan_type = models.CharField(max_length=10, choices=ScanType.choices)
     verdict = models.CharField(max_length=12, choices=Verdict.choices)
