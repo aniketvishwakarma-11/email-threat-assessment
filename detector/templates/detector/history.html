@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Scan history</title>
+</head>
+<body>
+    <main>
+        <h1>Scan history</h1>
+        <p><a href="{% url 'home' %}">New scan</a> | <a href="{% url 'export_history' %}">Download CSV</a></p>
+        {% if records %}
+        <table>
+            <thead>
+                <tr><th>Time</th><th>Type</th><th>Verdict</th><th>Confidence</th><th>Indicators</th></tr>
+            </thead>
+            <tbody>
+            {% for record in records %}
+                <tr>
+                    <td>{{ record.created_at }}</td>
+                    <td>{{ record.get_scan_type_display }}</td>
+                    <td>{{ record.get_verdict_display }}</td>
+                    <td>{{ record.confidence|default:"-" }}</td>
+                    <td>{{ record.indicators|join:", "|default:"-" }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p>No scans have been recorded yet.</p>
+        {% endif %}
+    </main>
+</body>
+</html>

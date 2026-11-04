@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Email Threat Assessment</title>
+</head>
+<body>
+    <main>
+        <h1>Email Threat Assessment</h1>
+        <p><a href="{% url 'history' %}">View scan history</a></p>
+
+        <h2>Check an email</h2>
+        <form method="post">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <button type="submit" name="email_check">Check email</button>
+        </form>
+        {% if result %}<p role="status">Email result: <strong>{{ result }}</strong></p>{% endif %}
+
+        <h2>Check a PDF</h2>
+        <form method="post" enctype="multipart/form-data">
+            {% csrf_token %}
+            <label for="pdf_file">PDF file</label>
+            <input id="pdf_file" type="file" name="pdf_file" accept="application/pdf,.pdf" required>
+            <button type="submit" name="pdf_check">Check PDF</button>
+        </form>
+        {% if pdf_message %}<p role="status">{{ pdf_message }}</p>{% endif %}
+    </main>
+</body>
+</html>

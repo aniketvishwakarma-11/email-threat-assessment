@@ -1,0 +1,108 @@
+<article class="report">
+    <h2>{{ title }}</h2>
+
+    <div class="compare" aria-label="Original versus improved output">
+        <div class="compare-side before">
+            <span class="compare-label">Original prototype</span>
+            <strong class="compare-value">{{ legacy_label }}</strong>
+            <p>Single label · no evidence · no score</p>
+        </div>
+        <div class="compare-arrow" aria-hidden="true">→</div>
+        <div class="compare-side after">
+            <span class="compare-label">Improved assessment</span>
+            <strong class="compare-value">{{ report.verdict }}</strong>
+            <p>{{ report.reasons|length }} reason{{ report.reasons|length|pluralize }} · {{ report.risk_score }}/100 · {{ report.confidence }} confidence</p>
+        </div>
+    </div>
+    <p class="meta compare-note">The legacy label shows how the original single-label output maps from the same input; it is not a rerun of the old code.</p>
+
+    <div class="score-panel">
+        <div class="gauge {{ report.severity }}" style="--score: {{ report.risk_score }};" role="img" aria-label="Risk score {{ report.risk_score }} out of 100">
+            <div class="gauge-value"><strong>{{ report.risk_score }}</strong><span>/100</span></div>
+        </div>
+        <div class="score-meta">
+            <div class="summary">
+                <span class="badge {{ report.verdict }}">{{ report.verdict }}</span>
+                <span class="badge {{ report.severity }}">{{ report.severity }} severity</span>
+                <span class="badge">{{ report.confidence }} confidence</span>
+            </div>
+            <p><strong>Recommendation:</strong> {{ report.recommendation }}</p>
+            <p class="meta">Analysis source: {{ report.analysis_source_label }}{% if report.fallback %} · analysis was inconclusive or used a fallback{% endif %}</p>
+        </div>
+    </div>
+
+    {% if report.verdict == "unknown" %}
+    <div class="unknown-callout">
+        <strong>Why unknown?</strong>
+        <p>The analysis could not prove safety. Unlike the original workflow, this result is not converted into “safe” or “Ham”. Treat the content cautiously and request a manual review.</p>
+    </div>
+    {% endif %}
+
+    <section class="breakdown">
+        <h3>Score breakdown</h3>
+        {% for item in report.score_breakdown %}
+        <div class="contrib">
+            <span class="contrib-label">{{ item.label }}</span>
+            <span class="contrib-bar{% if item.malicious %} malicious{% endif %}"><span style="width: {{ item.percent }}%;"></span></span>
+            <span class="contrib-points">+{{ item.points }}</span>
+        </div>
+        {% empty %}
+        <p class="meta">No scored indicators were recorded.</p>
+        {% endfor %}
+        {% if report.score_note %}<p class="meta">{{ report.score_note }}</p>{% endif %}
+    </section>
+
+    <section class="reasons-section">
+        <h3>Detection reasons</h3>
+        <ul class="reasons">
+            {% for reason in report.reasons %}
+            <li class="reason{% if reason.malicious %} malicious{% endif %}">
+                <div class="reason-head">
+                    <strong>{{ reason.label }}</strong>
+                    {% if reason.weight %}<span class="points">+{{ reason.weight }}</span>{% endif %}
+                </div>
+                {% if reason.evidence %}<code>{{ reason.evidence }}</code>{% endif %}
+            </li>
+            {% empty %}
+            <li class="reason">No specific indicators were recorded.</li>
+            {% endfor %}
+        </ul>
+    </section>
+
+    <section class="evidence">
+        <h3>Evidence in the {% if kind == "email" %}submitted email{% else %}extracted PDF text{% endif %}</h3>
+        <p class="meta">
+            <span class="legend"><span class="swatch malicious"></span>malicious match</span>
+            <span class="legend"><span class="swatch suspicious"></span>suspicious match</span>
+            Highlighting is generated in the browser from the matched evidence; the text itself is not interpreted as HTML.
+        </p>
+        {% if text %}
+            <pre id="{% if kind == 'email' %}email-preview{% else %}pdf-preview{% endif %}" class="preview" hidden></pre>
+            {% if truncated %}<p class="meta">Preview limited to the first {% if kind == "email" %}20,000{% else %}2,000{% endif %} characters.</p>{% endif %}
+            {% if kind == "email" %}
+                {{ text|json_script:"email-text-data" }}
+                {{ report.reasons|json_script:"email-reasons-data" }}
+            {% else %}
+                {{ text|json_script:"pdf-text-data" }}
+                {{ report.reasons|json_script:"pdf-reasons-data" }}
+            {% endif %}
+        {% else %}
+            <p class="meta">No text preview is available for this result.</p>
+        {% endif %}
+    </section>
+
+    {% if pipeline %}
+    <details class="pipeline-wrap" open>
+        <summary>How this was analyzed</summary>
+        <ol class="pipeline">
+            {% for stage in pipeline %}
+            <li class="pipeline-step {{ stage.status }}">
+                <span class="dot" aria-hidden="true"></span>
+                <strong>{{ stage.name }}</strong>
+                <span class="stage-detail">{{ stage.detail }}</span>
+            </li>
+            {% endfor %}
+        </ol>
+    </details>
+    {% endif %}
+</article>
