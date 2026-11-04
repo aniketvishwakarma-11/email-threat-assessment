@@ -20,12 +20,20 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-%3nby+a1k$d%#e6s8#=n8xoyz7!hfn86_zukawlu#chz@!fak6'
+import os
+from django.core.management.utils import get_random_secret_key
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
-
-ALLOWED_HOSTS = []
+DEPLOYMENT_ENV = os.getenv("DJANGO_ENV", "development").lower()
+DEBUG = os.getenv("DJANGO_DEBUG", "false").lower() == "true"
+configured_secret = os.getenv("DJANGO_SECRET_KEY", "").strip()
+if DEPLOYMENT_ENV == "production" and not configured_secret:
+    raise RuntimeError("DJANGO_SECRET_KEY must be set in production")
+SECRET_KEY = configured_secret or get_random_secret_key()
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+    if host.strip()
+]
 
 
 # Application definition
@@ -37,7 +45,6 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'detector',
 ]
 
 MIDDLEWARE = [
@@ -55,7 +62,7 @@ ROOT_URLCONF = 'SpamDetection.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -117,6 +124,15 @@ USE_TZ = True
 
 STATIC_URL = 'static/'
 
-import os
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+THREAT_AI_ENABLED = os.getenv("THREAT_AI_ENABLED", "false").lower() == "true"
+MAX_UPLOAD_SIZE = int(os.getenv("MAX_UPLOAD_SIZE", str(10 * 1024 * 1024)))
+MAX_PDF_PAGES = int(os.getenv("MAX_PDF_PAGES", "50"))
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY","AIzaSyD-ESUaTzo8otZuTorzaevkU7OL3BSJpCc")
+if DEPLOYMENT_ENV == "production":
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_HSTS_SECONDS = 31536000
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
